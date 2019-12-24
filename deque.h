@@ -9,7 +9,9 @@
 /* Polymorphic Blocking Deque, specialized for type. Must be typedefed before inclusion. 
  */
 
+#define OK (0)
 #define ERR (-1)
+#define DEQUE_EMPTY (1)
 
 typedef struct node {
     struct node *prev, *next;
@@ -17,47 +19,94 @@ typedef struct node {
 } node_t;
 
 typedef struct deque {
-    pthread_mutexattr_t lock_attr;
-    pthread_mutex_t lock;
-    sem_t on_retrieve;
+    size_t size;
     node_t begin, end;
 } deque_t;
 
-int deque_init(deque_t *d) {
-    int err = 0;
-    memset(d, 0, sizeof(*d));
-    err = pthread_mutexattr_settype(&d->lock_attr, PTHREAD_MUTEX_ERRORCHECK);
-    if (err)
-        return err;
-    err = sem_init(&d->on_retrieve, 0, 0);
-    if (err)
-        return err;
-    err = pthread_mutex_init(&d->lock, &d->lock_attr);
-    if (err)
-        return sem_destroy(&d->on_retrieve), err;
+void deque_init(deque_t *d) {
+    d->size = 0;
     d->begin.prev = d->end.next = NULL;
     d->begin.next = &d->end;
     d->end.prev = &d->begin;
-    return 0;
 }
 
-int deque_is_empty(deque_t *d) { return d->begin.next == &d->end; }
+void deque_destroy(deque_t *d) {
+    for (node_t * ptr = d->begin.next; ptr != &d->end;) {
+        node_t * next = ptr->next;
+        free(ptr);
+        ptr = next;
+    }
+}
+
+size_t deque_size(deque_t *d) {
+    return d->size;
+}
+
+int deque_is_empty(deque_t *d) { 
+    return deque_size(d) == 0; 
+}
 
 int deque_push_front(deque_t *d, type * val) {
-    int err;
     node_t * new_node = malloc(sizeof(node_t));
     if (new_node == NULL) {
         return ERR;
     }
-    new_node->val = *val;
-    if ((err = pthread_mutex_lock(&d->lock)) != 0) {
-        return err;
-    }
+    d->size++;
 
-    err = sem_post(&d->on_retrieve);
-    if (err != 0) {
-        return pthread_mutex_unlock(&d->lock);
+    new_node->val = *val;
+    new_node->prev = &d->begin;
+    new_node->next = d->begin.next;
+    d->begin.next = new_node;
+    new_node->next->prev = new_node;
+    return OK;
+}
+
+int deque_push_back(deque_t *d, type * val) {
+    node_t * new_node = malloc(sizeof(node_t));
+    if (new_node == NULL) {
+        return ERR;
     }
+    d->size++;
+
+    new_node->val = *val;
+    new_node->next = &d->end;
+    new_node->prev = d->end.prev;
+    d->end.prev = new_node;
+    new_node->prev->next = new_node;
+    return OK;
+}
+
+int deque_pop_front(deque_t *d, type * val) {
+    if (deque_is_empty(d)) {
+        return DEQUE_EMPTY;
+    }
+    d->size--;
+    node_t * front = d->begin.next;
+    *val = front->val;
+
+    d->begin.next = front->next;
+    front->next->prev = &d->begin;
+
+    free(front);
+
+    return OK;
+}
+
+
+int deque_pop_back(deque_t *d, type * val) {
+    if (deque_is_empty(d)) {
+        return DEQUE_EMPTY;
+    }
+    d->size--;
+    node_t * back = d->end.prev;
+    *val = back->val;
+
+    d->end.prev = back->prev;
+    back->prev->next = &d->end;
+
+    free(back);
+
+    return OK;
 }
 
 #endif
