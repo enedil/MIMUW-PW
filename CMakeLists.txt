@@ -4,7 +4,7 @@ project (ASYNC C)
 enable_testing()
 
 #set(CMAKE_C_STANDARD ...)
-set(CMAKE_C_FLAGS "-ggdb3 -Wall -Wextra -pthread -fsanitize=undefined,address")
+set(CMAKE_C_FLAGS "-ggdb3 -Wall -Wextra -pthread")
 
 # http://stackoverflow.com/questions/10555706/
 macro (add_executable _name)
