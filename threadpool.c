@@ -98,10 +98,7 @@ void thread_pool_destroy(struct thread_pool *pool) {
 }
 
 int defer(struct thread_pool *pool, runnable_t runnable) {
-    if (blocking_deque_push_back(&pool->tasks, &runnable)) {
-        return ERR;
-    }
-    return OK;
+    return blocking_deque_push_back(&pool->tasks, &runnable);
 }
 
 static void deque_init(deque_t *d) {
@@ -205,7 +202,7 @@ static int _mutexattr_init(pthread_mutexattr_t *attr) {
     return OK;
 }
 
-static int _mutex_init(pthread_mutex_t *mutex, pthread_mutexattr_t *attr) {
+int _mutex_init(pthread_mutex_t *mutex, pthread_mutexattr_t *attr) {
     int err;
     if ((err = _mutexattr_init(attr)))
         return err;
@@ -216,17 +213,16 @@ static int _mutex_init(pthread_mutex_t *mutex, pthread_mutexattr_t *attr) {
     return OK;
 }
 
-static void _mutex_destroy(pthread_mutex_t *mutex, pthread_mutexattr_t *attr) {
+void _mutex_destroy(pthread_mutex_t *mutex, pthread_mutexattr_t *attr) {
     pthread_mutex_destroy(mutex);
     pthread_mutexattr_destroy(attr);
 }
 
-static int robust_mutex_unlock(pthread_mutex_t * mutex) {
+int robust_mutex_lock(pthread_mutex_t * mutex) {
     int err = 0;
     switch((err = pthread_mutex_lock(mutex))) {
       case EOWNERDEAD:
-        err = pthread_mutex_consistent(mutex);
-        if (err) return err;
+        return pthread_mutex_consistent(mutex);
       case 0:
         return 0;
       default:
@@ -251,7 +247,7 @@ static int blocking_deque_init(blocking_deque_t *d) {
 
 static int blocking_deque_destroy(blocking_deque_t *d) {
     int err;
-    if ((err = robust_mutex_unlock(&d->lock))) {
+    if ((err = robust_mutex_lock(&d->lock))) {
         return err;
     }
 
@@ -259,13 +255,12 @@ static int blocking_deque_destroy(blocking_deque_t *d) {
     pthread_cond_destroy(&d->cond);
     pthread_mutex_unlock(&d->lock);
     _mutex_destroy(&d->lock, &d->lock_attr);
+    return OK;
 }
 
 static size_t blocking_deque_size(blocking_deque_t *d) {
     size_t ret;
-    int err;
-    if ((err = robust_mutex_unlock(&d->lock)))
-        return err;
+    robust_mutex_lock(&d->lock);
     ret = deque_size(&d->deque);
     pthread_mutex_unlock(&d->lock);
     return ret;
@@ -277,13 +272,13 @@ static int blocking_deque_is_empty(blocking_deque_t *d) {
 
 static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val) {
     int err;
-    if ((err = robust_mutex_unlock(&d->lock)))
+    if ((err = robust_mutex_lock(&d->lock)))
         return err;
     if ((err = deque_push_front(&d->deque, val)))
         return err;
-    if ((err = pthread_cond_signal(&d->cond)))
-        goto POP;
     if ((err = pthread_mutex_unlock(&d->lock)))
+        goto POP;
+    if ((err = pthread_cond_signal(&d->cond)))
         goto POP;
     return OK;
 
@@ -296,13 +291,13 @@ POP:;
 
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val) {
     int err;
-    if ((err = robust_mutex_unlock(&d->lock)))
+    if ((err = robust_mutex_lock(&d->lock)))
         return err;
     if ((err = deque_push_back(&d->deque, val)))
         return err;
-    if ((err = pthread_cond_signal(&d->cond)))
-        goto POP;
     if ((err = pthread_mutex_unlock(&d->lock)))
+        goto POP;
+    if ((err = pthread_cond_signal(&d->cond)))
         goto POP;
     return OK;
 
@@ -315,7 +310,7 @@ POP:;
 
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
     int err;
-    if ((err = robust_mutex_unlock(&d->lock)))
+    if ((err = robust_mutex_lock(&d->lock)))
         return err;
     while (deque_is_empty(&d->deque) && err == 0) {
         err = pthread_cond_wait(&d->cond, &d->lock);
@@ -333,7 +328,7 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
 
 static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val) {
     int err;
-    if ((err = robust_mutex_unlock(&d->lock)))
+    if ((err = robust_mutex_lock(&d->lock)))
         return err;
 
     while (deque_is_empty(&d->deque) && err == 0) {

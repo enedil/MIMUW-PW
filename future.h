@@ -14,6 +14,11 @@ typedef struct callable {
 typedef struct future {
     callable_t callable;
     sem_t on_result;
+    pthread_mutex_t lock;
+    pthread_mutexattr_t lock_attr;
+    int finished;
+    void (*exit_handler)(void*, size_t);
+    struct future* continuation;
     void* result;
     size_t result_size;
 } future_t;
