@@ -1,4 +1,5 @@
 #include <string.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <errno.h>
@@ -25,6 +26,11 @@ static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val);
 static void* thread_worker(void* deque) {
     blocking_deque_t * tasks = deque;
     runnable_t runnable;
+
+    sigset_t sigint_block;
+    sigemptyset(&sigint_block);
+    sigaddset(&sigint_block, SIGINT);
+    pthread_sigmask(SIG_BLOCK, &sigint_block, NULL);
 
     while (1) {
         int err = blocking_deque_pop_front(tasks, &runnable);
@@ -57,6 +63,7 @@ CLEANUP:
 }
 
 int thread_pool_init(thread_pool_t *pool, size_t num_threads) {
+    pool->allow_adding = 1;
     pool->pool_size = num_threads;
 
     if (blocking_deque_init(&pool->tasks))
@@ -274,7 +281,7 @@ static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val) {
         return err;
     if ((err = deque_push_front(&d->deque, val)))
         return err;
-    if (deque_size(&d->deque) == 1 && (err = pthread_cond_signal(&d->cond)))
+    if ((err = pthread_cond_signal(&d->cond)))
         goto POP;
     if ((err = pthread_mutex_unlock(&d->lock)))
         goto POP;
@@ -293,7 +300,7 @@ static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val) {
         return err;
     if ((err = deque_push_back(&d->deque, val)))
         return err;
-    if (/*deque_size(&d->deque) == 1 &&*/ (err = pthread_cond_signal(&d->cond)))
+    if ((err = pthread_cond_signal(&d->cond)))
         goto POP;
     if ((err = pthread_mutex_unlock(&d->lock)))
         goto POP;
