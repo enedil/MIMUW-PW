@@ -1,6 +1,3 @@
-#include <stdio.h>
-#include <string.h>
-
 #include <stdlib.h>
 #include <errno.h>
 
@@ -42,7 +39,6 @@ void func_to_defer_async(void * ptr, __attribute__((unused)) size_t size) {
         pthread_mutex_unlock(&future->lock);
     } else {
         pthread_mutex_unlock(&future->lock);
-        fprintf(stderr, "sem_post\n");
         sem_post(on_result);
     }
 }
@@ -94,10 +90,8 @@ void *await(future_t *future) {
     int err = 0;
     errno = 0;
     do {
-        fprintf(stderr, "sem_wait, errno = %s\n", strerror(errno));
         sem_wait(on_result);
     } while (err != 0 && errno != EINTR);
     sem_destroy(on_result);
-    fprintf(stderr, "sem_destroy\n");
     return future->result;
 }
