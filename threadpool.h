@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 typedef struct runnable {
   void (*function)(void *, size_t);
@@ -33,6 +34,7 @@ typedef struct blocking_deque {
 
 typedef struct thread_pool {
     int allow_adding;
+    sem_t active_task_counter;
     size_t pool_size;
     pthread_t* threads;
     blocking_deque_t tasks;

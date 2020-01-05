@@ -1,4 +1,4 @@
-//#include <string.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -18,19 +18,36 @@ static int blocking_deque_init(blocking_deque_t *d);
 static int blocking_deque_destroy(blocking_deque_t *d);
 static size_t blocking_deque_size(blocking_deque_t *d);
 static int blocking_deque_is_empty(blocking_deque_t *d);
-static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val) ;
+static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val);
 
-static void* thread_worker(void* deque) {
-    blocking_deque_t * tasks = deque;
-    runnable_t runnable;
+static void handle_sigint(__attribute__((unused)) int signo) {
 
+}
+
+__attribute__((constructor)) static void set_handler() {
+    struct sigaction act;
+    act.sa_handler = handle_sigint;
+    if (sigaction(SIGINT, &act, NULL) == -1) {
+        abort();
+    }
+}
+
+static void block_sigint_from_worker() {
     sigset_t sigint_block;
     sigemptyset(&sigint_block);
     sigaddset(&sigint_block, SIGINT);
     pthread_sigmask(SIG_BLOCK, &sigint_block, NULL);
+}
+
+static void* thread_worker(void* p) {
+    thread_pool_t* pool = p;
+    blocking_deque_t * tasks = &pool->tasks;
+    runnable_t runnable;
+
+    block_sigint_from_worker();
 
     while (1) {
         int err = blocking_deque_pop_front(tasks, &runnable);
@@ -38,16 +55,23 @@ static void* thread_worker(void* deque) {
             return (void*)(ssize_t)err;
         }
         if (runnable.function == NULL) {
+            int v;
+            sem_getvalue(&pool->active_task_counter, &v);
+            if (v == 0) {
+                thread_pool_destroy(pool);
+            }
             return (void*)OK;
         }
+        sem_post(&pool->active_task_counter);
         runnable.function(runnable.arg, runnable.argsz);
+        sem_wait(&pool->active_task_counter);
     }
 }
 
 static int create_threads(thread_pool_t * pool) {
     size_t i;
     for (i = 0; i < pool->pool_size; ++i) {
-        if (pthread_create(&pool->threads[i], NULL, thread_worker, &pool->tasks)) {
+        if (pthread_create(&pool->threads[i], NULL, thread_worker, &pool)) {
             goto CLEANUP;
         }
     }
@@ -73,11 +97,16 @@ int thread_pool_init(thread_pool_t *pool, size_t num_threads) {
     if (pool->threads == NULL)
         goto DESTROY_DEQUE;
 
-    if (create_threads(pool))
+    if (sem_init(&pool->active_task_counter, 0, 0))
         goto DESTROY_THREAD_ARRAY;
+
+    if (create_threads(pool))
+        goto DESTROY_ACTIVE_TASK_COUNTER;
 
     return OK;
 
+DESTROY_ACTIVE_TASK_COUNTER:
+    sem_destroy(&pool->active_task_counter);
 DESTROY_THREAD_ARRAY:
     free(pool->threads);
 DESTROY_DEQUE:
@@ -87,17 +116,23 @@ DESTROY_NOTHING:
 }
 
 void thread_pool_destroy(struct thread_pool *pool) {
+    pthread_t self = pthread_self();
     for (size_t i = 0; i < pool->pool_size; ++i) {
-        pthread_cancel(pool->threads[i]);
+        if (!pthread_equal(self, pool->threads[i]))
+            pthread_cancel(pool->threads[i]);
     }
     for (size_t i = 0; i < pool->pool_size; ++i) {
-        pthread_join(pool->threads[i], NULL);
+        if (!pthread_equal(self, pool->threads[i]))
+            pthread_join(pool->threads[i], NULL);
     }
+    sem_destroy(&pool->active_task_counter);
     free(pool->threads);
     blocking_deque_destroy(&pool->tasks);
 }
 
 int defer(struct thread_pool *pool, runnable_t runnable) {
+    if (!pool->allow_adding)
+        return ERR;
     return blocking_deque_push_back(&pool->tasks, &runnable);
 }
 
