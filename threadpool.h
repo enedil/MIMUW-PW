@@ -29,7 +29,7 @@ typedef struct blocking_deque {
     deque_t deque;
     pthread_mutex_t lock;
     pthread_mutexattr_t lock_attr;
-    pthread_cond_t cond;
+    sem_t sem;
 } blocking_deque_t;
 
 typedef struct thread_pool {

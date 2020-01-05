@@ -1,4 +1,5 @@
 #include <pthread.h>
+#include <string.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -17,7 +18,6 @@ static int deque_pop_back(deque_t *d, runnable_t * val);
 static int blocking_deque_init(blocking_deque_t *d);
 static int blocking_deque_destroy(blocking_deque_t *d);
 static size_t blocking_deque_size(blocking_deque_t *d);
-static int blocking_deque_is_empty(blocking_deque_t *d);
 static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val);
@@ -71,7 +71,7 @@ static void* thread_worker(void* p) {
 static int create_threads(thread_pool_t * pool) {
     size_t i;
     for (i = 0; i < pool->pool_size; ++i) {
-        if (pthread_create(&pool->threads[i], NULL, thread_worker, &pool)) {
+        if (pthread_create(&pool->threads[i], NULL, thread_worker, pool)) {
             goto CLEANUP;
         }
     }
@@ -271,7 +271,8 @@ static int blocking_deque_init(blocking_deque_t *d) {
     if ((err = _mutex_init(&d->lock, &d->lock_attr)))
         return err;
 
-    if ((err = pthread_cond_init(&d->cond, NULL))) {
+    //if ((err = pthread_cond_init(&d->cond, NULL))) {
+    if ((err = sem_init(&d->sem, 0, 0))) {
         _mutex_destroy(&d->lock, &d->lock_attr);
         return err;
     }
@@ -287,7 +288,8 @@ static int blocking_deque_destroy(blocking_deque_t *d) {
     }
 
     deque_destroy(&d->deque);
-    pthread_cond_destroy(&d->cond);
+    //pthread_cond_destroy(&d->cond);
+    sem_destroy(&d->sem);
     pthread_mutex_unlock(&d->lock);
     _mutex_destroy(&d->lock, &d->lock_attr);
     return OK;
@@ -301,9 +303,6 @@ static size_t blocking_deque_size(blocking_deque_t *d) {
     return ret;
 }
 
-static int blocking_deque_is_empty(blocking_deque_t *d) {
-    return blocking_deque_size(d) == 0;
-}
 
 static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val) {
     int err;
@@ -313,7 +312,8 @@ static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val) {
         return err;
     if ((err = pthread_mutex_unlock(&d->lock)))
         goto POP;
-    if ((err = pthread_cond_signal(&d->cond)))
+    //if ((err = pthread_cond_signal(&d->cond)))
+    if ((err = sem_post(&d->sem)))
         goto POP;
     return OK;
 
@@ -332,7 +332,8 @@ static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val) {
         return err;
     if ((err = pthread_mutex_unlock(&d->lock)))
         goto POP;
-    if ((err = pthread_cond_signal(&d->cond)))
+    //if ((err = pthread_cond_signal(&d->cond)))
+    if ((err = sem_post(&d->sem)))
         goto POP;
     return OK;
 
@@ -345,15 +346,23 @@ POP:;
 
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
     int err;
+    while (sem_wait(&d->sem) == -1 && errno == EINTR);
+    if (errno)
+        return -1;
+
     if ((err = robust_mutex_lock(&d->lock)))
         return err;
+    /*
     while (deque_is_empty(&d->deque) && err == 0) {
         err = pthread_cond_wait(&d->cond, &d->lock);
     }
+    */
+    /*
     if (err) {
         pthread_mutex_unlock(&d->lock);
         return err;
     }
+    */
     assert(deque_pop_front(&d->deque, val) == 0);   // should not fail in any case
 
     pthread_mutex_unlock(&d->lock);
@@ -363,17 +372,23 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
 
 static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val) {
     int err;
+    while (sem_wait(&d->sem) == -1 && errno == EINTR);
+    if (errno)
+        return -1;
+
     if ((err = robust_mutex_lock(&d->lock)))
         return err;
-
+    /*
     while (deque_is_empty(&d->deque) && err == 0) {
         err = pthread_cond_wait(&d->cond, &d->lock);
     }
-
+    */
+    /*
     if (err) {
         pthread_mutex_unlock(&d->lock);
         return err;
     }
+    */
     assert(deque_pop_back(&d->deque, val) == 0);   // should not fail in any case
 
     pthread_mutex_unlock(&d->lock);
