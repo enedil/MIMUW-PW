@@ -17,10 +17,13 @@ void fatal_error(int e) {
         size_t size;
         size = backtrace(array, 10);
         fprintf(stderr, "Stumbled upon fatal error.");
-        backtrace_symbols_fd(array, size, 2);
+        int stderr_fileno = 2;
+        backtrace_symbols_fd(array, size, stderr_fileno);
         exit(1);
     }
 }
+
+static void FE() __attribute__((alias("fatal_error")));
 
 static int future_init(future_t * future) {
     future->finished = 0;
@@ -42,7 +45,7 @@ void func_to_defer_async(void * ptr, __attribute__((unused)) size_t size) {
 
     void* result = callable->function(callable->arg, callable->argsz, &future->result_size);
 
-    fatal_error(robust_mutex_lock(&future->lock));
+    FE(robust_mutex_lock(&future->lock));
     future->result = result;
     future->finished = 1;
     if (future->cont.exit_handler != NULL) {
@@ -52,13 +55,11 @@ void func_to_defer_async(void * ptr, __attribute__((unused)) size_t size) {
         task->callable.argsz = future->result_size;
 
         size_t result_size = future->result_size;
-        fatal_error(pthread_mutex_unlock(&future->lock));
-//        cont->exit_handler(task, result_size);
-        fatal_error(async(cont.pool_for_task, task, task->callable));
-
+        FE(pthread_mutex_unlock(&future->lock));
+        FE(async(cont.pool_for_task, task, task->callable));
     } else {
-        fatal_error(pthread_mutex_unlock(&future->lock));
-        fatal_error(sem_post(on_result));
+        FE(pthread_mutex_unlock(&future->lock));
+        FE(sem_post(on_result));
     }
 }
 
@@ -111,7 +112,7 @@ void *await(future_t *future) {
     do {
         sem_wait(on_result);
     } while (err != 0 && errno != EINTR);
-    fatal_error(err);
-    fatal_error(sem_destroy(on_result));
+    FE(err);
+    FE(sem_destroy(on_result));
     return future->result;
 }
