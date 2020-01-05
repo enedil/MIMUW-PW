@@ -3,8 +3,8 @@ project (ASYNC C)
 
 enable_testing()
 
-#set(CMAKE_C_STANDARD ...)
-set(CMAKE_C_FLAGS "-ggdb3 -Wall -Wextra -pthread ")
+#set(CMAKE_C_STANDARD gnu11)
+set(CMAKE_C_FLAGS "-std=c11 -ggdb3 -Wall -Wextra -pthread ")
 
 # http://stackoverflow.com/questions/10555706/
 macro (add_executable _name)

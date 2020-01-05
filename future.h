@@ -11,16 +11,21 @@ typedef struct callable {
   size_t argsz;
 } callable_t;
 
+struct continuation {
+    struct future* task;
+    thread_pool_t* pool_for_task;
+    void (*exit_handler)(void*, size_t);
+};
+
 typedef struct future {
     callable_t callable;
     sem_t on_result;
     pthread_mutex_t lock;
     pthread_mutexattr_t lock_attr;
     int finished;
-    void (*exit_handler)(void*, size_t);
-    struct future* continuation;
     void* result;
     size_t result_size;
+    struct continuation cont;
 } future_t;
 
 int async(thread_pool_t *pool, future_t *future, callable_t callable);

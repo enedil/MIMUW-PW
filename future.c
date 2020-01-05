@@ -1,3 +1,5 @@
+#include <execinfo.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 
@@ -9,9 +11,20 @@ extern void _mutex_destroy(pthread_mutex_t *, pthread_mutexattr_t *);
 
 typedef void *(*function_t)(void *);
 
+void fatal_error(int e) {
+    if (e) {
+        void *array[10];
+        size_t size;
+        size = backtrace(array, 10);
+        fprintf(stderr, "Stumbled upon fatal error.");
+        backtrace_symbols_fd(array, size, 2);
+        exit(1);
+    }
+}
+
 static int future_init(future_t * future) {
     future->finished = 0;
-    future->exit_handler = NULL;
+    future->cont = (struct continuation){};
     int err = sem_init(&future->on_result, 0 /*pshared*/, 0 /*initial value*/);
     if (err)
         return err;
@@ -29,17 +42,23 @@ void func_to_defer_async(void * ptr, __attribute__((unused)) size_t size) {
 
     void* result = callable->function(callable->arg, callable->argsz, &future->result_size);
 
-    robust_mutex_lock(&future->lock);
+    fatal_error(robust_mutex_lock(&future->lock));
     future->result = result;
     future->finished = 1;
-    if (future->exit_handler) {
-        future->continuation->callable.arg = result;
-        future->continuation->callable.argsz = future->result_size;
-        future->exit_handler(future->continuation, future->result_size);
-        pthread_mutex_unlock(&future->lock);
+    if (future->cont.exit_handler != NULL) {
+        struct continuation cont = future->cont;
+        future_t* task = cont.task;
+        task->callable.arg = result;
+        task->callable.argsz = future->result_size;
+
+        size_t result_size = future->result_size;
+        fatal_error(pthread_mutex_unlock(&future->lock));
+//        cont->exit_handler(task, result_size);
+        fatal_error(async(cont.pool_for_task, task, task->callable));
+
     } else {
-        pthread_mutex_unlock(&future->lock);
-        sem_post(on_result);
+        fatal_error(pthread_mutex_unlock(&future->lock));
+        fatal_error(sem_post(on_result));
     }
 }
 
@@ -75,11 +94,11 @@ int map(thread_pool_t *pool, future_t *future, future_t *from,
         pthread_mutex_unlock(&from->lock);
         defer(pool, runnable);
     } else {
-        from->exit_handler = func_to_defer_async;
-        from->continuation = future;
+        struct continuation *cont = &from->cont;
+        cont->exit_handler = func_to_defer_async;
+        cont->task = future;
         pthread_mutex_unlock(&from->lock);
     }
-
 
     return 0;
 }
@@ -92,6 +111,7 @@ void *await(future_t *future) {
     do {
         sem_wait(on_result);
     } while (err != 0 && errno != EINTR);
-    sem_destroy(on_result);
+    fatal_error(err);
+    fatal_error(sem_destroy(on_result));
     return future->result;
 }
