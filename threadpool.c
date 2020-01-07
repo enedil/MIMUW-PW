@@ -84,6 +84,8 @@ __attribute__((destructor)) void finish_work() {
 
 
 static void thread_pool_halt_threads(thread_pool_t* pool) {
+    if (!pool->allow_adding)
+        return;
     pool->allow_adding = 0;
     for (__typeof (pool->pool_size) i = 0; i < pool->pool_size; ++i) {
         runnable_t r = {};
