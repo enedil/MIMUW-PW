@@ -85,6 +85,7 @@ int main() {
         if (sem_destroy(sems + i)) {
             return EXIT_FAILURE;
         }
+        free(vd_row[i]);
     }
     free(sems);
     free(tab);
