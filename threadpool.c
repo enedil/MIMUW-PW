@@ -335,7 +335,7 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
 }
 
 
-static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
+static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val) {
     //int v;
     //sem_getvalue(&d->sem, &v);
     //printf("< pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
