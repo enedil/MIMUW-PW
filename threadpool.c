@@ -64,7 +64,7 @@ __attribute__((constructor)) static void set_handlers() {
     act.sa_handler = handle_sigint;
     FE(sigaction(SIGINT, &act, NULL));
 
-    sigset_t sigint_bloc;
+    sigset_t sigint_block;
     FE(sigemptyset(&sigint_block));
     FE(sigaddset(&sigint_block, SIGINT));
     FE(sigprocmask(SIG_UNBLOCK, &sigint_block, NULL));
