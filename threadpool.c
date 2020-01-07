@@ -25,6 +25,22 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val);
 static void* handler_thread(void*);
 static void handle_sigint(__attribute__((unused)) int signo) {}
 
+struct vector {
+    thread_pool_t **arr;
+    size_t size;
+    size_t alloc_size;
+    pthread_mutex_t lock;
+    pthread_mutexattr_t lockattr;
+};
+
+static struct vector active_pools;
+
+static int struct_vector_init(struct vector*);
+static int struct_vector_push_back(struct vector*, thread_pool_t*);
+static void struct_vector_destroy(struct vector*);
+static void struct_vector_remove(struct vector* , thread_pool_t* );
+int robust_mutex_lock(pthread_mutex_t *);
+
 void fatal_error(int e) {
     if (e) {
         void *array[10];
@@ -52,7 +68,12 @@ __attribute__((constructor)) static void set_handlers() {
     FE(sigaddset(&sigint_block, SIGINT));
     FE(sigprocmask(SIG_UNBLOCK, &sigint_block, NULL));
     pthread_t tid;
+    FE(struct_vector_init(&active_pools));
     FE(pthread_create(&tid, NULL, handler_thread, NULL));
+}
+
+__attribute__((destructor)) void finish_work() {
+    struct_vector_destroy(&active_pools);
 }
 
 
@@ -76,7 +97,7 @@ static void thread_pool_decomission_resources(thread_pool_t* pool) {
     blocking_deque_destroy(&pool->tasks);
 }
 
-static void* handler_thread(void* arg) {
+static void* handler_thread(void* __attribute__((unused)) arg) {
     sigset_t sigint, neg_sigint;
     FE(sigemptyset(&sigint));
     FE(sigfillset(&neg_sigint));
@@ -86,9 +107,23 @@ static void* handler_thread(void* arg) {
     while (1) {
         int sig_no;
         FE(sigwait(&sigint, &sig_no));
-
+        FE(robust_mutex_lock(&active_pools.lock));
+        for (size_t i = 0; i < active_pools.size; ++i) {
+            if (active_pools.arr[i]) {
+                thread_pool_halt_threads(active_pools.arr[i]);
+            }
+        }
+        for (size_t i = 0; i < active_pools.size; ++i) {
+            if (active_pools.arr[i]) {
+                thread_pool_decomission_resources(active_pools.arr[i]);
+                active_pools.arr[i] = NULL;
+            }
+        }
+        active_pools.size = 0;
+        pthread_mutex_unlock(&active_pools.lock);
     }
 }
+
 
 static void* thread_worker(void* p) {
     thread_pool_t* pool = p;
@@ -120,8 +155,6 @@ static int create_threads(thread_pool_t * pool) {
 
 CLEANUP:
     while (i--) {
-        // pthread_cond_wait is a cancellation point, therefore the threads
-        // will be cancelled immediately
         assert(pthread_cancel(pool->threads[i]) == 0);
     }
     return ERR;
@@ -130,7 +163,6 @@ CLEANUP:
 int thread_pool_init(thread_pool_t *pool, size_t num_threads) {
     pool->allow_adding = 1;
     pool->pool_size = num_threads;
-
     if (blocking_deque_init(&pool->tasks))
         goto DESTROY_NOTHING;
 
@@ -142,6 +174,9 @@ int thread_pool_init(thread_pool_t *pool, size_t num_threads) {
         goto DESTROY_THREAD_ARRAY;
 
     if (create_threads(pool))
+        goto DESTROY_ACTIVE_THREAD_COUNTER;
+
+    if (struct_vector_push_back(&active_pools, pool))
         goto DESTROY_ACTIVE_THREAD_COUNTER;
 
     return OK;
@@ -156,10 +191,10 @@ DESTROY_NOTHING:
     return ERR;
 }
 
-
 void thread_pool_destroy(struct thread_pool *pool) {
     thread_pool_halt_threads(pool);
     thread_pool_decomission_resources(pool);
+    struct_vector_remove(&active_pools, pool);
 }
 
 int defer(struct thread_pool *pool, runnable_t runnable) {
@@ -357,4 +392,59 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
     pthread_mutex_unlock(&d->lock);
 
     return OK;
+}
+
+static int struct_vector_init(struct vector* vec) {
+    vec->size = 0;
+    vec->alloc_size = 4;
+    if ((vec->arr = calloc(vec->alloc_size, sizeof(thread_pool_t*))) == NULL) {
+        return ERR;
+    }
+    if (_mutex_init(&vec->lock, &vec->lockattr)) {
+        free(vec->arr);
+        return ERR;
+    }
+    return OK;
+}
+
+static int struct_vector_push_back(struct vector* vec, thread_pool_t* pool) {
+    FE(robust_mutex_lock(&vec->lock));
+    for (size_t i = 0; i < vec->size; ++i) {
+        if (vec->arr[i] == NULL) {
+            vec->arr[i] = pool;
+            pthread_mutex_unlock(&vec->lock);
+            return OK;
+        }
+    }
+    if (vec->size+1 > vec->alloc_size) {
+        thread_pool_t** p = realloc(vec->arr, 2*vec->alloc_size);
+        if (!p) {
+            pthread_mutex_unlock(&vec->lock);
+            return ERR;
+        }
+        vec->arr = p;
+        vec->alloc_size *= 2;
+    }
+    vec->arr[vec->size] = pool;
+    vec->size++;
+
+    pthread_mutex_unlock(&vec->lock);
+    return OK;
+}
+
+static void struct_vector_destroy(struct vector* vec) {
+    free(vec->arr);
+    _mutex_destroy(&vec->lock, &vec->lockattr);
+}
+
+static void struct_vector_remove(struct vector* vec, thread_pool_t* pool) {
+    FE(robust_mutex_lock(&vec->lock));
+    for (size_t i = 0; i < vec->size; ++i) {
+        if (vec->arr[i] == pool) {
+            vec->arr[i] = NULL;
+            pthread_mutex_unlock(&vec->lock);
+            return;
+        }
+    }
+    pthread_mutex_unlock(&vec->lock);
 }

@@ -92,7 +92,7 @@ int map(thread_pool_t *pool, future_t *future, future_t *from,
                                .arg = future,
                                .argsz = from->result_size};
         pthread_mutex_unlock(&from->lock);
-        defer(pool, runnable);
+        return defer(pool, runnable);
     } else {
         struct continuation *cont = &from->cont;
         cont->exit_handler = func_to_defer_async;
