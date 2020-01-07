@@ -59,11 +59,11 @@ void fatal_error(int e) {
 void FE(int) __attribute__((alias("fatal_error")));
 
 __attribute__((constructor)) static void set_handlers() {
-    struct sigaction act1;
-    act1.sa_handler = handle_sigint;
-    FE(sigaction(SIGINT, &act1, NULL));
+    struct sigaction act = {};
+    act.sa_handler = handle_sigint;
+    FE(sigaction(SIGINT, &act, NULL));
 
-    sigset_t sigint_block;
+    sigset_t sigint_bloc;
     FE(sigemptyset(&sigint_block));
     FE(sigaddset(&sigint_block, SIGINT));
     FE(sigprocmask(SIG_UNBLOCK, &sigint_block, NULL));
