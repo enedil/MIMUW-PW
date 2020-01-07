@@ -60,6 +60,7 @@ int main(){
         struct data* d = await(fut + n - i - 1);
         fact *= d->pref_prod;
     }
+    free(fut);
     thread_pool_destroy(&pool);
     printf("%" PRId64 "\n", fact);
 }
