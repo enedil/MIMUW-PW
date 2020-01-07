@@ -112,10 +112,11 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
     while (1) {
         frpintf(stderr, "%s", "waiting for signal");
         int sig_no;
-        FE(pthread_sigmask(SIG_UNBLOCK, &sigint, NULL));
+        sigset_t oldmask;
+        FE(pthread_sigmask(SIG_UNBLOCK, &sigint, &oldmask));
         FE(sigwait(&sigcatched, &sig_no));
         frpintf(stderr, "%s", "got signal");
-        FE(pthread_sigmask(SIG_BLOCK, &sigint, NULL));
+        FE(pthread_sigmask(SIG_SETMASK, &oldmask, NULL));
 
         if (sig_no == SIGUSR1) {
             return NULL;
