@@ -84,7 +84,7 @@ __attribute__((destructor)) void finish_work() {
 
 
 static void thread_pool_halt_threads(thread_pool_t* pool) {
-    if (!pool->allow_adding)
+    if (!pool->allow_adding || pool->deleted)
         return;
     pool->allow_adding = 0;
     for (__typeof (pool->pool_size) i = 0; i < pool->pool_size; ++i) {
@@ -94,6 +94,9 @@ static void thread_pool_halt_threads(thread_pool_t* pool) {
 }
 
 static void thread_pool_decomission_resources(thread_pool_t* pool) {
+    if (pool->deleted)
+        return;
+    pool->deleted = 1;
     pthread_t self = pthread_self();
     for (size_t i = 0; i < pool->pool_size; ++i) {
         if (!pthread_equal(self, pool->threads[i]))
@@ -177,6 +180,7 @@ CLEANUP:
 
 int thread_pool_init(thread_pool_t *pool, size_t num_threads) {
     pool->allow_adding = 1;
+    pool->deleted = 0;
     pool->pool_size = num_threads;
     if (blocking_deque_init(&pool->tasks))
         goto DESTROY_NOTHING;

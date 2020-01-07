@@ -33,7 +33,8 @@ typedef struct blocking_deque {
 } blocking_deque_t;
 
 typedef struct thread_pool {
-    int allow_adding;
+    short allow_adding;
+    short deleted;
     sem_t active_thread_counter;
     size_t pool_size;
     pthread_t* threads;
