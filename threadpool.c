@@ -115,10 +115,8 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
     FE(sigaddset(&sigcatched, SIGUSR1));
     FE(pthread_sigmask(SIG_SETMASK, &blocked, NULL));
     while (1) {
-        fprintf(stderr, "%s", "waiting for signal");
         int sig_no;
         FE(sigwait(&sigcatched, &sig_no));
-        fprintf(stderr, "%s", "got signal");
 
         if (sig_no == SIGUSR1) {
             return NULL;
