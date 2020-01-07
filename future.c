@@ -1,4 +1,3 @@
-#include <execinfo.h>
 #include <stdlib.h>
 #include <errno.h>
 
