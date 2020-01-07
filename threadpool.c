@@ -115,7 +115,7 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
         sigset_t oldmask;
         FE(pthread_sigmask(SIG_UNBLOCK, &sigint, &oldmask));
         FE(sigwait(&sigcatched, &sig_no));
-        fpintf(stderr, "%s", "got signal");
+        fprintf(stderr, "%s", "got signal");
         FE(pthread_sigmask(SIG_SETMASK, &oldmask, NULL));
 
         if (sig_no == SIGUSR1) {
