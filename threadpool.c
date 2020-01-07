@@ -21,7 +21,6 @@ static int blocking_deque_destroy(blocking_deque_t *d);
 static size_t blocking_deque_size(blocking_deque_t *d);
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val);
-static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val);
 static __attribute__((constructor)) void* handler_thread(void*);
 
 static void handle_sigint(__attribute__((unused)) int signo) {}
@@ -329,30 +328,6 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
     if ((err = robust_mutex_lock(&d->lock)))
         return err;
     assert(deque_pop_front(&d->deque, val) == 0);   // should not fail in any case
-
-    pthread_mutex_unlock(&d->lock);
-
-    return OK;
-}
-
-
-static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val) {
-    //int v;
-    //sem_getvalue(&d->sem, &v);
-    //printf("< pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
-
-    int err;
-
-    while (sem_wait(&d->sem) == -1 && errno == EINTR);
-    if (errno)
-        return -1;
-
-    //sem_getvalue(&d->sem, &v);
-    //printf("> pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
-
-    if ((err = robust_mutex_lock(&d->lock)))
-        return err;
-    assert(deque_pop_back(&d->deque, val) == 0);   // should not fail in any case
 
     pthread_mutex_unlock(&d->lock);
 
