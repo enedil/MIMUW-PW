@@ -62,5 +62,5 @@ int main(){
     }
     free(fut);
     thread_pool_destroy(&pool);
-    printf("%" PRId64 "\n", fact);
+    printf("%" PRIu64 "\n", fact);
 }
