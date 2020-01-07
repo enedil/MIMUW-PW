@@ -33,7 +33,7 @@ struct vector {
     pthread_mutexattr_t lockattr;
 };
 
-static pthread_t handler_tid;
+pthread_t handler_tid;
 static struct vector active_pools;
 
 static int struct_vector_init(struct vector*);
