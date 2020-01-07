@@ -4,7 +4,7 @@ project (ASYNC C)
 enable_testing()
 
 #set(CMAKE_C_STANDARD gnu11)
-set(CMAKE_C_FLAGS "-std=gnu11 -ggdb3 -Wall -Wextra -pthread ")
+set(CMAKE_C_FLAGS "-std=gnu11 -ggdb3 -Wall -Wextra -pthread -O2")
 
 # http://stackoverflow.com/questions/10555706/
 macro (add_executable _name)
@@ -19,6 +19,6 @@ include_directories(include)
 add_library(asyncc STATIC threadpool.c future.c)
 add_executable(macierz macierz.c)
 add_executable(silnia silnia.c)
-#add_subdirectory(test)
+add_subdirectory(test)
 
 install(TARGETS asyncc DESTINATION .)
