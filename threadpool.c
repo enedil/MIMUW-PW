@@ -33,7 +33,7 @@ struct vector {
     pthread_mutexattr_t lockattr;
 };
 
-pthread_t handler_tid;
+static pthread_t handler_tid;
 static struct vector active_pools;
 
 static int struct_vector_init(struct vector*);
@@ -108,11 +108,13 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
     FE(sigdelset(&neg_sigint, SIGINT));
     FE(pthread_sigmask(SIG_SETMASK, &neg_sigint, NULL));
     while (1) {
+        puts("waiting for signal");
         int sig_no;
         FE(sigwait(&sigcatched, &sig_no));
         if (sig_no == SIGUSR1) {
             return NULL;
         }
+        puts("got signal");
         FE(robust_mutex_lock(&active_pools.lock));
         for (size_t i = 0; i < active_pools.size; ++i) {
             if (active_pools.arr[i]) {
