@@ -97,7 +97,7 @@ static void thread_pool_decomission_resources(thread_pool_t* pool) {
     blocking_deque_destroy(&pool->tasks);
 }
 
-static void* handler_thread(void* __attribute__((unused)) arg) {
+static void* handler_thread(__attribute__((unused)) void* arg) {
     sigset_t sigint, neg_sigint;
     FE(sigemptyset(&sigint));
     FE(sigfillset(&neg_sigint));
