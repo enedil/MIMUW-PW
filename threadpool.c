@@ -113,6 +113,8 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
         FE(sigwait(&sigcatched, &sig_no));
         if (sig_no == SIGUSR1) {
             return NULL;
+        } else if (sig_no != SIGINT) {
+            FE(1);
         }
         puts("got signal");
         FE(robust_mutex_lock(&active_pools.lock));
