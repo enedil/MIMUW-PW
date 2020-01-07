@@ -70,6 +70,7 @@ __attribute__((constructor)) static void set_handlers() {
     sigset_t sigint_block;
     FE(sigemptyset(&sigint_block));
     FE(sigaddset(&sigint_block, SIGINT));
+    FE(sigaddset(&sigint_block, SIGUSR1));
     FE(sigprocmask(SIG_BLOCK, &sigint_block, NULL));
     FE(struct_vector_init(&active_pools));
     FE(pthread_create(&handler_tid, NULL, handler_thread, NULL));
