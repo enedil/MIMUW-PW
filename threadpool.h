@@ -34,7 +34,7 @@ typedef struct blocking_deque {
 
 typedef struct thread_pool {
     int allow_adding;
-    sem_t active_task_counter;
+    sem_t active_thread_counter;
     size_t pool_size;
     pthread_t* threads;
     blocking_deque_t tasks;

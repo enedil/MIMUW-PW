@@ -8,6 +8,7 @@
 extern int robust_mutex_lock(pthread_mutex_t*);
 extern int _mutex_init(pthread_mutex_t *, pthread_mutexattr_t *);
 extern void _mutex_destroy(pthread_mutex_t *, pthread_mutexattr_t *);
+static int async_internal(thread_pool_t *, future_t* , callable_t, int);
 
 typedef void *(*function_t)(void *);
 
@@ -38,6 +39,11 @@ static int future_init(future_t * future) {
     return OK;
 }
 
+static void future_destroy(future_t* future) {
+    _mutex_destroy(&future->lock, &future->lock_attr);
+    FE(sem_destroy(&future->on_result));
+}
+
 void func_to_defer_async(void * ptr, __attribute__((unused)) size_t size) {
     future_t * future = ptr;
     sem_t * on_result = &future->on_result;
@@ -56,22 +62,31 @@ void func_to_defer_async(void * ptr, __attribute__((unused)) size_t size) {
 
         size_t result_size = future->result_size;
         FE(pthread_mutex_unlock(&future->lock));
-        FE(async(cont.pool_for_task, task, task->callable));
+        future_destroy(future);
+        FE(async_internal(cont.pool_for_task, task, task->callable, 1));
     } else {
         FE(pthread_mutex_unlock(&future->lock));
+        printf("sem_post on_result = %p\n", on_result);
         FE(sem_post(on_result));
     }
 }
 
-int async(thread_pool_t *pool, future_t *future, callable_t callable) {
-    int err = future_init(future);
-    if (err)
+
+static int async_internal(thread_pool_t *pool, future_t* future, callable_t callable, int from_mapped) {
+    if (!from_mapped) {
+        int err = future_init(future);
+        if (err)
         return err;
+    }
     future->callable = callable;
     runnable_t runnable = {.function = func_to_defer_async,
                            .arg = future,
                            .argsz = callable.argsz};
     return defer(pool, runnable);
+}
+
+int async(thread_pool_t *pool, future_t *future, callable_t callable) {
+    return async_internal(pool, future, callable, 0);
 }
 
 int map(thread_pool_t *pool, future_t *future, future_t *from,
@@ -98,6 +113,7 @@ int map(thread_pool_t *pool, future_t *future, future_t *from,
         struct continuation *cont = &from->cont;
         cont->exit_handler = func_to_defer_async;
         cont->task = future;
+        cont->pool_for_task = pool;
         pthread_mutex_unlock(&from->lock);
     }
 
@@ -109,10 +125,13 @@ void *await(future_t *future) {
 
     int err = 0;
     errno = 0;
+    int v;
+    sem_getvalue(on_result, &v);
+    printf("sem_val await: %d\n", v);
     do {
-        sem_wait(on_result);
-    } while (err != 0 && errno != EINTR);
+        err = sem_wait(on_result);
+    } while (err != 0 && errno == EINTR);
     FE(err);
-    FE(sem_destroy(on_result));
+    future_destroy(future);
     return future->result;
 }

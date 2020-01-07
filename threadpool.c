@@ -23,16 +23,43 @@ static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val);
 
-static void handle_sigint(__attribute__((unused)) int signo) {
+void handle_sigint(__attribute__((unused)) int signo) {
 
 }
 
+void handle_sigusr1(__attribute__((unused)) int signo) {}
+
 __attribute__((constructor)) static void set_handler() {
-    struct sigaction act;
-    act.sa_handler = handle_sigint;
-    if (sigaction(SIGINT, &act, NULL) == -1) {
+    struct sigaction act1;
+    act1.sa_handler = handle_sigint;
+    if (sigaction(SIGINT, &act1, NULL) == -1) {
         abort();
     }
+    struct sigaction act2;
+    act2.sa_handler = handle_sigusr1;
+    if (sigaction(SIGUSR1, &act2, NULL) == -1) {
+        abort();
+    }
+}
+
+static void thread_pool_halt_threads(thread_pool_t* pool) {
+    pool->allow_adding = 0;
+    for (int i = 0; i < pool->pool_size; ++i) {
+        runnable_t r = {};
+        if (blocking_deque_push_back(&pool->tasks, &r))
+            exit(EXIT_FAILURE);
+    }
+}
+
+static void thread_pool_decomission_resources(thread_pool_t* pool) {
+    pthread_t self = pthread_self();
+    for (size_t i = 0; i < pool->pool_size; ++i) {
+        if (!pthread_equal(self, pool->threads[i]))
+            pthread_join(pool->threads[i], NULL);
+    }
+    sem_destroy(&pool->active_thread_counter);
+    free(pool->threads);
+    blocking_deque_destroy(&pool->tasks);
 }
 
 static void block_sigint_from_worker() {
@@ -52,19 +79,19 @@ static void* thread_worker(void* p) {
     while (1) {
         int err = blocking_deque_pop_front(tasks, &runnable);
         if (err) {
+            sem_wait(&pool->active_thread_counter);
             return (void*)(ssize_t)err;
         }
         if (runnable.function == NULL) {
             int v;
-            sem_getvalue(&pool->active_task_counter, &v);
+            sem_wait(&pool->active_thread_counter);
+            sem_getvalue(&pool->active_thread_counter, &v);
             if (v == 0) {
-                thread_pool_destroy(pool);
+                //thread_pool_decomission_resources(pool);
             }
             return (void*)OK;
         }
-        sem_post(&pool->active_task_counter);
         runnable.function(runnable.arg, runnable.argsz);
-        sem_wait(&pool->active_task_counter);
     }
 }
 
@@ -97,16 +124,16 @@ int thread_pool_init(thread_pool_t *pool, size_t num_threads) {
     if (pool->threads == NULL)
         goto DESTROY_DEQUE;
 
-    if (sem_init(&pool->active_task_counter, 0, 0))
+    if (sem_init(&pool->active_thread_counter, 0, num_threads))
         goto DESTROY_THREAD_ARRAY;
 
     if (create_threads(pool))
-        goto DESTROY_ACTIVE_TASK_COUNTER;
+        goto DESTROY_ACTIVE_THREAD_COUNTER;
 
     return OK;
 
-DESTROY_ACTIVE_TASK_COUNTER:
-    sem_destroy(&pool->active_task_counter);
+DESTROY_ACTIVE_THREAD_COUNTER:
+    sem_destroy(&pool->active_thread_counter);
 DESTROY_THREAD_ARRAY:
     free(pool->threads);
 DESTROY_DEQUE:
@@ -115,19 +142,10 @@ DESTROY_NOTHING:
     return ERR;
 }
 
+
 void thread_pool_destroy(struct thread_pool *pool) {
-    pthread_t self = pthread_self();
-    for (size_t i = 0; i < pool->pool_size; ++i) {
-        if (!pthread_equal(self, pool->threads[i]))
-            pthread_cancel(pool->threads[i]);
-    }
-    for (size_t i = 0; i < pool->pool_size; ++i) {
-        if (!pthread_equal(self, pool->threads[i]))
-            pthread_join(pool->threads[i], NULL);
-    }
-    sem_destroy(&pool->active_task_counter);
-    free(pool->threads);
-    blocking_deque_destroy(&pool->tasks);
+    thread_pool_halt_threads(pool);
+    thread_pool_decomission_resources(pool);
 }
 
 int defer(struct thread_pool *pool, runnable_t runnable) {
@@ -325,6 +343,7 @@ POP:;
 
 
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val) {
+    printf("push %ld: queue %p, sem %p, runnable %p\n", pthread_self(), d, &d->sem, val);
     int err;
     if ((err = robust_mutex_lock(&d->lock)))
         return err;
@@ -345,10 +364,18 @@ POP:;
 }
 
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
+    int v;
+    sem_getvalue(&d->sem, &v);
     int err;
+    printf("< pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
+
+
     while (sem_wait(&d->sem) == -1 && errno == EINTR);
     if (errno)
         return -1;
+
+    sem_getvalue(&d->sem, &v);
+    //printf("> pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
 
     if ((err = robust_mutex_lock(&d->lock)))
         return err;
@@ -372,6 +399,7 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
 
 static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val) {
     int err;
+
     while (sem_wait(&d->sem) == -1 && errno == EINTR);
     if (errno)
         return -1;

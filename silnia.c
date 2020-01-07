@@ -25,6 +25,7 @@ void* factorial_step(void* arg, __attribute__((unused)) size_t size, size_t* res
 }
 
 int main(){
+    setvbuf(stdout, NULL, _IONBF, 0);
     printf("pid: %d\n", getpid());
     if (1 != scanf("%u", &n))
         return EXIT_FAILURE;
@@ -55,10 +56,10 @@ int main(){
     }
 
     uint64_t fact = 1;
-    for (unsigned i = 0; i < 3 && n > i; ++i) {
+    for (unsigned i = 0; i < 3 && i < n; ++i) {
         struct data* d = await(fut + n - i - 1);
         fact *= d->pref_prod;
     }
+    thread_pool_destroy(&pool);
     printf("%" PRId64 "\n", fact);
-    //thread_pool_destroy(&pool);
 }
