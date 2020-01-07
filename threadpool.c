@@ -110,7 +110,7 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
     FE(sigdelset(&neg_sigint, SIGINT));
     FE(pthread_sigmask(SIG_SETMASK, &neg_sigint, NULL));
     while (1) {
-        frpintf(stderr, "%s", "waiting for signal");
+        fprintf(stderr, "%s", "waiting for signal");
         int sig_no;
         sigset_t oldmask;
         FE(pthread_sigmask(SIG_UNBLOCK, &sigint, &oldmask));
