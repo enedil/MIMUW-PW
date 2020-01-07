@@ -14,6 +14,7 @@ static size_t deque_size(deque_t *d);
 static int deque_is_empty(deque_t *d);
 static int deque_push_back(deque_t *d, runnable_t * val);
 static int deque_pop_front(deque_t *d, runnable_t * val);
+static int deque_pop_back(deque_t *d, runnable_t * val);
 
 static int blocking_deque_init(blocking_deque_t *d);
 static int blocking_deque_destroy(blocking_deque_t *d);
