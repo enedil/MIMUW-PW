@@ -374,7 +374,7 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
     if (errno)
         return -1;
 
-    sem_getvalue(&d->sem, &v);
+    //sem_getvalue(&d->sem, &v);
     //printf("> pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
 
     if ((err = robust_mutex_lock(&d->lock)))
