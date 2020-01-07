@@ -100,23 +100,20 @@ static void thread_pool_decomission_resources(thread_pool_t* pool) {
 }
 
 static void* handler_thread(__attribute__((unused)) void* arg) {
-    sigset_t sigcatched, neg_sigint, sigint;
+    sigset_t sigcatched, blocked;
     FE(sigemptyset(&sigcatched));
-    FE(sigemptyset(&sigint));
-    FE(sigfillset(&neg_sigint));
+    FE(sigfillset(&blocked));
     FE(sigaddset(&sigcatched, SIGINT));
     FE(sigaddset(&sigcatched, SIGUSR1));
-    FE(sigaddset(&sigint, SIGINT));
-    FE(sigdelset(&neg_sigint, SIGINT));
-    FE(pthread_sigmask(SIG_SETMASK, &neg_sigint, NULL));
+    FE(pthread_sigmask(SIG_SETMASK, &blocked, NULL));
     while (1) {
         fprintf(stderr, "%s", "waiting for signal");
         int sig_no;
-        sigset_t oldmask;
-        FE(pthread_sigmask(SIG_UNBLOCK, &sigint, &oldmask));
+    //    sigset_t oldmask;
+      //  FE(pthread_sigmask(SIG_UNBLOCK, &sigint, &oldmask));
         FE(sigwait(&sigcatched, &sig_no));
         fprintf(stderr, "%s", "got signal");
-        FE(pthread_sigmask(SIG_SETMASK, &oldmask, NULL));
+     //   FE(pthread_sigmask(SIG_SETMASK, &oldmask, NULL));
 
         if (sig_no == SIGUSR1) {
             return NULL;
