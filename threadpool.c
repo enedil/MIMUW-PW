@@ -212,6 +212,21 @@ static int deque_pop_front(deque_t *d, runnable_t * val) {
     return OK;
 }
 
+static int deque_pop_back(deque_t *d, runnable_t * val) {
+    if (deque_is_empty(d)) {
+        return DEQUE_EMPTY;
+    }
+    d->size--;
+    node_t * back = d->end.prev;
+    *val = back->val;
+
+    d->end.prev = back->prev;
+    back->prev->next= &d->end;
+
+    free(back);
+
+    return OK;
+}
 
 static int _mutexattr_init(pthread_mutexattr_t *attr) {
     int err;
