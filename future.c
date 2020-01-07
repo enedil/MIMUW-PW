@@ -13,7 +13,7 @@ typedef void *(*function_t)(void *);
 
 static int future_init(future_t * future) {
     future->finished = 0;
-    future->cont = (struct continuation){};
+    future->cont = (__typeof((future->cont))){};
     int err = sem_init(&future->on_result, 0 /*pshared*/, 0 /*initial value*/);
     if (err)
         return err;

@@ -21,35 +21,38 @@ static int blocking_deque_destroy(blocking_deque_t *d);
 static size_t blocking_deque_size(blocking_deque_t *d);
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val);
-static void* handler_thread(void*);
 
+static void* handler_thread(void*);
 static void handle_sigint(__attribute__((unused)) int signo) {}
 
 void fatal_error(int e) {
     if (e) {
         void *array[10];
-        size_t size;
+        int size;
         size = backtrace(array, 10);
-        fprintf(stderr, "Stumbled upon fatal error.");
+        fprintf(stderr, "Stumbled upon a fatal error.\n");
+        if (errno) {
+            fprintf(stderr, "errno: %s\n", strerror(errno));
+        }
         int stderr_fileno = 2;
         backtrace_symbols_fd(array, size, stderr_fileno);
-        exit(1);
+        abort();
     }
 }
 
-void FE() __attribute__((alias("fatal_error")));
+void FE(int) __attribute__((alias("fatal_error")));
 
 __attribute__((constructor)) static void set_handlers() {
     struct sigaction act1;
     act1.sa_handler = handle_sigint;
-    if (sigaction(SIGINT, &act1, NULL) == -1) {
-        abort();
-    }
+    FE(sigaction(SIGINT, &act1, NULL));
 
     sigset_t sigint_block;
-    sigemptyset(&sigint_block);
-    sigaddset(&sigint_block, SIGINT);
-    sigprocmask(SIG_BLOCK, &sigint_block, NULL);
+    FE(sigemptyset(&sigint_block));
+    FE(sigaddset(&sigint_block, SIGINT));
+    FE(sigprocmask(SIG_UNBLOCK, &sigint_block, NULL));
+    pthread_t tid;
+    FE(pthread_create(&tid, NULL, handler_thread, NULL));
 }
 
 
@@ -73,11 +76,18 @@ static void thread_pool_decomission_resources(thread_pool_t* pool) {
     blocking_deque_destroy(&pool->tasks);
 }
 
-static __attribute__((constructor)) void* handler_thread(void* arg) {
-    sigset_t sigint_block;
-    FE(sigfillset(&sigint_block));
-    sigaddset(&sigint_block, SIGINT);
-    pthread_sigmask(SIG_BLOCK, &sigint_block, NULL);
+static void* handler_thread(void* arg) {
+    sigset_t sigint, neg_sigint;
+    FE(sigemptyset(&sigint));
+    FE(sigfillset(&neg_sigint));
+    FE(sigaddset(&sigint, SIGINT));
+    FE(sigdelset(&neg_sigint, SIGINT));
+    FE(pthread_sigmask(SIG_SETMASK, &neg_sigint, NULL));
+    while (1) {
+        int sig_no;
+        FE(sigwait(&sigint, &sig_no));
+
+    }
 }
 
 static void* thread_worker(void* p) {
