@@ -51,7 +51,7 @@ void fatal_error(int e) {
         int size;
         size = backtrace(array, 10);
         fprintf(stderr, "Stumbled upon a fatal error.\n");
-        fprintf(stderr, "err: %s\n", strerror(err));
+        fprintf(stderr, "err: %s\n", strerror(e));
         if (errno) {
             fprintf(stderr, "errno: %s\n", strerror(errno));
         }
