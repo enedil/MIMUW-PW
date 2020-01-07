@@ -33,6 +33,7 @@ struct vector {
     pthread_mutexattr_t lockattr;
 };
 
+pthread_t handler_tid;
 static struct vector active_pools;
 
 static int struct_vector_init(struct vector*);
@@ -67,13 +68,14 @@ __attribute__((constructor)) static void set_handlers() {
     FE(sigemptyset(&sigint_block));
     FE(sigaddset(&sigint_block, SIGINT));
     FE(sigprocmask(SIG_UNBLOCK, &sigint_block, NULL));
-    pthread_t tid;
     FE(struct_vector_init(&active_pools));
-    FE(pthread_create(&tid, NULL, handler_thread, NULL));
+    FE(pthread_create(&handler_tid, NULL, handler_thread, NULL));
 }
 
 __attribute__((destructor)) void finish_work() {
     struct_vector_destroy(&active_pools);
+    pthread_kill(handler_tid, SIGUSR1);
+    pthread_join(handler_tid, NULL);
 }
 
 
@@ -98,15 +100,19 @@ static void thread_pool_decomission_resources(thread_pool_t* pool) {
 }
 
 static void* handler_thread(__attribute__((unused)) void* arg) {
-    sigset_t sigint, neg_sigint;
-    FE(sigemptyset(&sigint));
+    sigset_t sigcatched, neg_sigint;
+    FE(sigemptyset(&sigcatched));
     FE(sigfillset(&neg_sigint));
-    FE(sigaddset(&sigint, SIGINT));
+    FE(sigaddset(&sigcatched, SIGINT));
+    FE(sigaddset(&sigcatched, SIGUSR1));
     FE(sigdelset(&neg_sigint, SIGINT));
     FE(pthread_sigmask(SIG_SETMASK, &neg_sigint, NULL));
     while (1) {
         int sig_no;
-        FE(sigwait(&sigint, &sig_no));
+        FE(sigwait(&sigcatched, &sig_no));
+        if (sig_no == SIGUSR1) {
+            return NULL;
+        }
         FE(robust_mutex_lock(&active_pools.lock));
         for (size_t i = 0; i < active_pools.size; ++i) {
             if (active_pools.arr[i]) {
