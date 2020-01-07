@@ -110,11 +110,11 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
     FE(sigdelset(&neg_sigint, SIGINT));
     FE(pthread_sigmask(SIG_SETMASK, &neg_sigint, NULL));
     while (1) {
-        puts("waiting for signal");
+        frpintf(stderr, "%s", "waiting for signal");
         int sig_no;
         FE(pthread_sigmask(SIG_UNBLOCK, &sigint, NULL));
         FE(sigwait(&sigcatched, &sig_no));
-        puts("got signal");
+        frpintf(stderr, "%s", "got signal");
         FE(pthread_sigmask(SIG_BLOCK, &sigint, NULL));
 
         if (sig_no == SIGUSR1) {
@@ -122,7 +122,6 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
         } else if (sig_no != SIGINT) {
             FE(1);
         }
-        puts("got signal");
         FE(robust_mutex_lock(&active_pools.lock));
         for (size_t i = 0; i < active_pools.size; ++i) {
             if (active_pools.arr[i]) {
