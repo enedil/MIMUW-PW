@@ -21,7 +21,7 @@ static int blocking_deque_destroy(blocking_deque_t *d);
 static size_t blocking_deque_size(blocking_deque_t *d);
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val);
-static __attribute__((constructor)) void* handler_thread(void*);
+static void* handler_thread(void*);
 
 static void handle_sigint(__attribute__((unused)) int signo) {}
 

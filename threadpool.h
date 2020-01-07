@@ -46,4 +46,6 @@ void thread_pool_destroy(thread_pool_t *pool);
 
 int defer(thread_pool_t *pool, runnable_t runnable);
 
+void FE(int);
+
 #endif
