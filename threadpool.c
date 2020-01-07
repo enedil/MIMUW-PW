@@ -343,7 +343,7 @@ POP:;
 
 
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val) {
-    printf("push %ld: queue %p, sem %p, runnable %p\n", pthread_self(), d, &d->sem, val);
+    //printf("push %ld: queue %p, sem %p, runnable %p\n", pthread_self(), d, &d->sem, val);
     int err;
     if ((err = robust_mutex_lock(&d->lock)))
         return err;
@@ -364,10 +364,10 @@ POP:;
 }
 
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
-    int v;
-    sem_getvalue(&d->sem, &v);
+    //int v;
+    //sem_getvalue(&d->sem, &v);
     int err;
-    printf("< pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
+    //printf("< pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
 
 
     while (sem_wait(&d->sem) == -1 && errno == EINTR);

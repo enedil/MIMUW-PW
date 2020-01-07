@@ -66,7 +66,7 @@ void func_to_defer_async(void * ptr, __attribute__((unused)) size_t size) {
         FE(async_internal(cont.pool_for_task, task, task->callable, 1));
     } else {
         FE(pthread_mutex_unlock(&future->lock));
-        printf("sem_post on_result = %p\n", on_result);
+        //printf("sem_post on_result = %p\n", on_result);
         FE(sem_post(on_result));
     }
 }
@@ -127,7 +127,7 @@ void *await(future_t *future) {
     errno = 0;
     int v;
     sem_getvalue(on_result, &v);
-    printf("sem_val await: %d\n", v);
+    //printf("sem_val await: %d\n", v);
     do {
         err = sem_wait(on_result);
     } while (err != 0 && errno == EINTR);
