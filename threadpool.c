@@ -33,7 +33,9 @@ struct vector {
     pthread_mutexattr_t lockattr;
 };
 
+// thread id of supervising thread
 pthread_t handler_tid;
+// this structure holds global info about running threads
 static struct vector active_pools;
 
 static int struct_vector_init(struct vector*);
@@ -42,6 +44,7 @@ static void struct_vector_destroy(struct vector*);
 static void struct_vector_remove(struct vector* , thread_pool_t* );
 int robust_mutex_lock(pthread_mutex_t *);
 
+// Print backtrace and exit. Used only in non-recoverable situations.
 void fatal_error(int e) {
     if (e) {
         void *array[10];
@@ -83,8 +86,7 @@ static void thread_pool_halt_threads(thread_pool_t* pool) {
     pool->allow_adding = 0;
     for (__typeof (pool->pool_size) i = 0; i < pool->pool_size; ++i) {
         runnable_t r = {};
-        if (blocking_deque_push_back(&pool->tasks, &r))
-            exit(EXIT_FAILURE);
+        FE(blocking_deque_push_back(&pool->tasks, &r));
     }
 }
 
@@ -109,11 +111,8 @@ static void* handler_thread(__attribute__((unused)) void* arg) {
     while (1) {
         fprintf(stderr, "%s", "waiting for signal");
         int sig_no;
-    //    sigset_t oldmask;
-      //  FE(pthread_sigmask(SIG_UNBLOCK, &sigint, &oldmask));
         FE(sigwait(&sigcatched, &sig_no));
         fprintf(stderr, "%s", "got signal");
-     //   FE(pthread_sigmask(SIG_SETMASK, &oldmask, NULL));
 
         if (sig_no == SIGUSR1) {
             return NULL;
@@ -205,8 +204,10 @@ DESTROY_NOTHING:
 }
 
 void thread_pool_destroy(struct thread_pool *pool) {
+    FE(robust_mutex_lock(&active_pools.lock));
     thread_pool_halt_threads(pool);
     thread_pool_decomission_resources(pool);
+    pthread_mutex_unlock(&active_pools.lock);
     struct_vector_remove(&active_pools, pool);
 }
 
