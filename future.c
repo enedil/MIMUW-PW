@@ -60,7 +60,6 @@ void func_to_defer_async(void * ptr, __attribute__((unused)) size_t size) {
         task->callable.arg = result;
         task->callable.argsz = future->result_size;
 
-        size_t result_size = future->result_size;
         FE(pthread_mutex_unlock(&future->lock));
         future_destroy(future);
         FE(async_internal(cont.pool_for_task, task, task->callable, 1));
