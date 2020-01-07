@@ -25,8 +25,8 @@ void* factorial_step(void* arg, __attribute__((unused)) size_t size, size_t* res
 }
 
 int main(){
-    setvbuf(stdout, NULL, _IONBF, 0);
-    printf("pid: %d\n", getpid());
+    //setvbuf(stdout, NULL, _IONBF, 0);
+    //printf("pid: %d\n", getpid());
     if (1 != scanf("%u", &n))
         return EXIT_FAILURE;
 
