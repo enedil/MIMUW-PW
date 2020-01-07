@@ -1,4 +1,6 @@
 #include <pthread.h>
+#include <stdio.h>
+#include <execinfo.h>
 #include <string.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -10,41 +12,49 @@ static void deque_init(deque_t *d);
 static void deque_destroy(deque_t *d);
 static size_t deque_size(deque_t *d);
 static int deque_is_empty(deque_t *d);
-static int deque_push_front(deque_t *d, runnable_t * val);
 static int deque_push_back(deque_t *d, runnable_t * val);
 static int deque_pop_front(deque_t *d, runnable_t * val);
-static int deque_pop_back(deque_t *d, runnable_t * val);
 
 static int blocking_deque_init(blocking_deque_t *d);
 static int blocking_deque_destroy(blocking_deque_t *d);
 static size_t blocking_deque_size(blocking_deque_t *d);
-static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val);
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val);
-static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val);
+static __attribute__((constructor)) void* handler_thread(void*);
 
-void handle_sigint(__attribute__((unused)) int signo) {
+static void handle_sigint(__attribute__((unused)) int signo) {}
 
+void fatal_error(int e) {
+    if (e) {
+        void *array[10];
+        size_t size;
+        size = backtrace(array, 10);
+        fprintf(stderr, "Stumbled upon fatal error.");
+        int stderr_fileno = 2;
+        backtrace_symbols_fd(array, size, stderr_fileno);
+        exit(1);
+    }
 }
 
-void handle_sigusr1(__attribute__((unused)) int signo) {}
+void FE() __attribute__((alias("fatal_error")));
 
-__attribute__((constructor)) static void set_handler() {
+__attribute__((constructor)) static void set_handlers() {
     struct sigaction act1;
     act1.sa_handler = handle_sigint;
     if (sigaction(SIGINT, &act1, NULL) == -1) {
         abort();
     }
-    struct sigaction act2;
-    act2.sa_handler = handle_sigusr1;
-    if (sigaction(SIGUSR1, &act2, NULL) == -1) {
-        abort();
-    }
+
+    sigset_t sigint_block;
+    sigemptyset(&sigint_block);
+    sigaddset(&sigint_block, SIGINT);
+    sigprocmask(SIG_BLOCK, &sigint_block, NULL);
 }
+
 
 static void thread_pool_halt_threads(thread_pool_t* pool) {
     pool->allow_adding = 0;
-    for (int i = 0; i < pool->pool_size; ++i) {
+    for (__typeof (pool->pool_size) i = 0; i < pool->pool_size; ++i) {
         runnable_t r = {};
         if (blocking_deque_push_back(&pool->tasks, &r))
             exit(EXIT_FAILURE);
@@ -62,9 +72,9 @@ static void thread_pool_decomission_resources(thread_pool_t* pool) {
     blocking_deque_destroy(&pool->tasks);
 }
 
-static void block_sigint_from_worker() {
+static __attribute__((constructor)) void* handler_thread(void*) {
     sigset_t sigint_block;
-    sigemptyset(&sigint_block);
+    FE(sigfillset(&sigint_block));
     sigaddset(&sigint_block, SIGINT);
     pthread_sigmask(SIG_BLOCK, &sigint_block, NULL);
 }
@@ -74,22 +84,15 @@ static void* thread_worker(void* p) {
     blocking_deque_t * tasks = &pool->tasks;
     runnable_t runnable;
 
-    block_sigint_from_worker();
-
     while (1) {
         int err = blocking_deque_pop_front(tasks, &runnable);
         if (err) {
             sem_wait(&pool->active_thread_counter);
-            return (void*)(ssize_t)err;
+            return NULL;
         }
         if (runnable.function == NULL) {
-            int v;
             sem_wait(&pool->active_thread_counter);
-            sem_getvalue(&pool->active_thread_counter, &v);
-            if (v == 0) {
-                //thread_pool_decomission_resources(pool);
-            }
-            return (void*)OK;
+            return NULL;
         }
         runnable.function(runnable.arg, runnable.argsz);
     }
@@ -177,21 +180,6 @@ static int deque_is_empty(deque_t *d) {
     return deque_size(d) == 0;
 }
 
-static int deque_push_front(deque_t *d, runnable_t * val) {
-    node_t * new_node = malloc(sizeof(node_t));
-    if (new_node == NULL) {
-        return ERR;
-    }
-    d->size++;
-
-    new_node->val = *val;
-    new_node->prev = &d->begin;
-    new_node->next = d->begin.next;
-    d->begin.next = new_node;
-    new_node->next->prev = new_node;
-    return OK;
-}
-
 static int deque_push_back(deque_t *d, runnable_t * val) {
     node_t * new_node = malloc(sizeof(node_t));
     if (new_node == NULL) {
@@ -223,22 +211,6 @@ static int deque_pop_front(deque_t *d, runnable_t * val) {
     return OK;
 }
 
-
-static int deque_pop_back(deque_t *d, runnable_t * val) {
-    if (deque_is_empty(d)) {
-        return DEQUE_EMPTY;
-    }
-    d->size--;
-    node_t * back = d->end.prev;
-    *val = back->val;
-
-    d->end.prev = back->prev;
-    back->prev->next = &d->end;
-
-    free(back);
-
-    return OK;
-}
 
 static int _mutexattr_init(pthread_mutexattr_t *attr) {
     int err;
@@ -289,7 +261,6 @@ static int blocking_deque_init(blocking_deque_t *d) {
     if ((err = _mutex_init(&d->lock, &d->lock_attr)))
         return err;
 
-    //if ((err = pthread_cond_init(&d->cond, NULL))) {
     if ((err = sem_init(&d->sem, 0, 0))) {
         _mutex_destroy(&d->lock, &d->lock_attr);
         return err;
@@ -306,7 +277,6 @@ static int blocking_deque_destroy(blocking_deque_t *d) {
     }
 
     deque_destroy(&d->deque);
-    //pthread_cond_destroy(&d->cond);
     sem_destroy(&d->sem);
     pthread_mutex_unlock(&d->lock);
     _mutex_destroy(&d->lock, &d->lock_attr);
@@ -322,28 +292,7 @@ static size_t blocking_deque_size(blocking_deque_t *d) {
 }
 
 
-static int blocking_deque_push_front(blocking_deque_t *d, runnable_t * val) {
-    int err;
-    if ((err = robust_mutex_lock(&d->lock)))
-        return err;
-    if ((err = deque_push_front(&d->deque, val)))
-        return err;
-    if ((err = pthread_mutex_unlock(&d->lock)))
-        goto POP;
-    //if ((err = pthread_cond_signal(&d->cond)))
-    if ((err = sem_post(&d->sem)))
-        goto POP;
-    return OK;
-
-POP:;
-    runnable_t t;
-    deque_pop_front(&d->deque, &t);
-    return err;
-}
-
-
 static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val) {
-    //printf("push %ld: queue %p, sem %p, runnable %p\n", pthread_self(), d, &d->sem, val);
     int err;
     if ((err = robust_mutex_lock(&d->lock)))
         return err;
@@ -351,7 +300,6 @@ static int blocking_deque_push_back(blocking_deque_t *d, runnable_t * val) {
         return err;
     if ((err = pthread_mutex_unlock(&d->lock)))
         goto POP;
-    //if ((err = pthread_cond_signal(&d->cond)))
     if ((err = sem_post(&d->sem)))
         goto POP;
     return OK;
@@ -360,15 +308,14 @@ POP:;
     runnable_t t;
     deque_pop_back(&d->deque, &t);
     return err;
-
 }
 
 static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
     //int v;
     //sem_getvalue(&d->sem, &v);
-    int err;
     //printf("< pop  %ld: queue %p, sem %p, semv %d, r %p\n", pthread_self(), d, &d->sem, v, val);
 
+    int err;
 
     while (sem_wait(&d->sem) == -1 && errno == EINTR);
     if (errno)
@@ -379,45 +326,7 @@ static int blocking_deque_pop_front(blocking_deque_t *d, runnable_t * val) {
 
     if ((err = robust_mutex_lock(&d->lock)))
         return err;
-    /*
-    while (deque_is_empty(&d->deque) && err == 0) {
-        err = pthread_cond_wait(&d->cond, &d->lock);
-    }
-    */
-    /*
-    if (err) {
-        pthread_mutex_unlock(&d->lock);
-        return err;
-    }
-    */
     assert(deque_pop_front(&d->deque, val) == 0);   // should not fail in any case
-
-    pthread_mutex_unlock(&d->lock);
-
-    return OK;
-}
-
-static int blocking_deque_pop_back(blocking_deque_t *d, runnable_t * val) {
-    int err;
-
-    while (sem_wait(&d->sem) == -1 && errno == EINTR);
-    if (errno)
-        return -1;
-
-    if ((err = robust_mutex_lock(&d->lock)))
-        return err;
-    /*
-    while (deque_is_empty(&d->deque) && err == 0) {
-        err = pthread_cond_wait(&d->cond, &d->lock);
-    }
-    */
-    /*
-    if (err) {
-        pthread_mutex_unlock(&d->lock);
-        return err;
-    }
-    */
-    assert(deque_pop_back(&d->deque, val) == 0);   // should not fail in any case
 
     pthread_mutex_unlock(&d->lock);
 

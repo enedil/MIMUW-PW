@@ -1,5 +1,4 @@
 #include <execinfo.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 
@@ -12,19 +11,6 @@ static int async_internal(thread_pool_t *, future_t* , callable_t, int);
 
 typedef void *(*function_t)(void *);
 
-void fatal_error(int e) {
-    if (e) {
-        void *array[10];
-        size_t size;
-        size = backtrace(array, 10);
-        fprintf(stderr, "Stumbled upon fatal error.");
-        int stderr_fileno = 2;
-        backtrace_symbols_fd(array, size, stderr_fileno);
-        exit(1);
-    }
-}
-
-static void FE() __attribute__((alias("fatal_error")));
 
 static int future_init(future_t * future) {
     future->finished = 0;
